@@ -83,8 +83,11 @@ async def ingest_file(
         )
     
     try:
-        # Process the file
-        result = await ingestor.process_upload(await file.read(), file.filename, metadata)
+        # Read the file content first
+        file_content = await file.read()
+        
+        # Process the file without awaiting the process_upload function
+        result = ingestor.process_upload(file_content, file.filename, metadata)
         
         # Create response
         response = models.ProcessingResponse(
@@ -157,8 +160,11 @@ async def ingest_files(
             continue
         
         try:
-            # Process the file
-            result = await ingestor.process_upload(await file.read(), file.filename, metadata)
+            # Read the file content first
+            file_content = await file.read()
+            
+            # Process the file without awaiting the process_upload function
+            result = ingestor.process_upload(file_content, file.filename, metadata)
             
             # Create response
             response = models.ProcessingResponse(

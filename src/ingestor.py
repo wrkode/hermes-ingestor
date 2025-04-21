@@ -118,7 +118,7 @@ class Ingestor:
         Process an uploaded file.
 
         Args:
-            file_obj: The file object (typically from FastAPI UploadFile)
+            file_obj: The file object (bytes or file-like object)
             filename: Name of the file
             metadata: Additional metadata to include
 
@@ -127,8 +127,13 @@ class Ingestor:
         """
         # Create a temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as tmp:
-            # Write the file content
-            shutil.copyfileobj(file_obj, tmp)
+            # Write the file content - handle both bytes and file-like objects
+            if isinstance(file_obj, bytes):
+                # If it's already bytes, just write it
+                tmp.write(file_obj)
+            else:
+                # If it's a file-like object, use copyfileobj
+                shutil.copyfileobj(file_obj, tmp)
             tmp_path = tmp.name
         
         try:
