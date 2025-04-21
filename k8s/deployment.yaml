@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-ingestor
+  labels:
+    app: hermes-ingestor
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hermes-ingestor
+  template:
+    metadata:
+      labels:
+        app: hermes-ingestor
+    spec:
+      containers:
+      - name: hermes-ingestor
+        image: ${DOCKER_REGISTRY}/hermes-ingestor:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DEBUG
+          value: "False"
+        - name: QDRANT_HOST
+          value: "qdrant"
+        - name: QDRANT_PORT
+          value: "6333"
+        - name: QDRANT_COLLECTION
+          value: "documents"
+        - name: QDRANT_PREFER_GRPC
+          value: "True"
+        - name: EMBEDDING_MODEL
+          value: "all-MiniLM-L6-v2"
+        - name: EMBEDDING_BATCH_SIZE
+          value: "32"
+        - name: CHUNK_SIZE
+          value: "1000"
+        - name: CHUNK_OVERLAP
+          value: "200"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: uploads
+          mountPath: /app/uploads
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: uploads
+        persistentVolumeClaim:
+          claimName: hermes-ingestor-uploads-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hermes-ingestor
+spec:
+  selector:
+    app: hermes-ingestor
+  ports:
+  - port: 80
+    targetPort: 8000
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hermes-ingestor-uploads-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard 
