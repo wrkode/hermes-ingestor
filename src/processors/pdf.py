@@ -52,12 +52,15 @@ class PDFProcessor(BaseProcessor):
                         try:
                             # Try to decode as UTF-8
                             decoded_value = value.decode("utf-8", errors="replace")
-                        except UnicodeDecodeError:
-                            # If decoding fails, use string representation
-                            decoded_value = str(value)
-                        metadata[key.lower().decode("utf-8", errors="replace")] = decoded_value
+                        except Exception as e:
+                            logger.warning(f"Could not decode metadata value for key {key}: {e}")
+                            decoded_value = str(value) # Fallback to string representation
                     else:
-                        metadata[key.lower().decode("utf-8", errors="replace")] = str(value)
+                        decoded_value = str(value)
+
+                    # Use lowercase key, removing the incorrect decode call
+                    metadata[key.lower()] = decoded_value
+
             
             # Get number of pages
             if "pages" not in metadata and hasattr(doc, "catalog"):

@@ -8,6 +8,8 @@ import logging
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse
 import json
+import requests
+import tempfile
 
 from ..ingestor import Ingestor
 from ..storage import QdrantStorage
@@ -347,4 +349,100 @@ async def service_status():
     
     except Exception as e:
         logger.error(f"Error getting service status: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error getting service status: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error getting service status: {str(e)}")
+
+
+@router.post(
+    "/ingest/url",
+    response_model=models.ProcessingResponse,
+    summary="Ingest a document from a URL",
+    description="Download and process a document from a given URL",
+    status_code=202 # Accepted for background processing
+)
+async def ingest_from_url(
+    payload: models.UrlIngestPayload,
+    background_tasks: BackgroundTasks
+):
+    """
+    Ingest a document from a URL in the background.
+
+    Args:
+        payload: The URL and optional metadata.
+        background_tasks: FastAPI background tasks scheduler.
+
+    Returns:
+        Acknowledgement that processing has started.
+    """
+    logger.info(f"Received request to ingest from URL: {payload.url}")
+
+    # Basic URL validation (could be more robust)
+    if not payload.url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Invalid URL provided")
+
+    def process_url_task():
+        """The actual task to be run in the background."""
+        temp_file_path = None
+        try:
+            # Download the file
+            response = requests.get(payload.url, stream=True, timeout=60) # 60s timeout
+            response.raise_for_status() # Raise exception for bad status codes
+
+            # Infer filename or use a default
+            filename = os.path.basename(payload.url.split("?")[0]) or "downloaded_file"
+
+            # Ensure filename has an extension if possible
+            content_type = response.headers.get('content-type')
+            ext = ""
+            if content_type:
+                if 'pdf' in content_type:
+                    ext = ".pdf"
+                elif 'text/plain' in content_type:
+                    ext = ".txt"
+                # Add more content-type checks as needed
+            
+            if not os.path.splitext(filename)[1] and ext:
+                filename += ext
+            
+            # Save to a temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as temp_file:
+                temp_file_path = temp_file.name
+                for chunk in response.iter_content(chunk_size=8192):
+                    temp_file.write(chunk)
+            
+            logger.info(f"Successfully downloaded file from {payload.url} to {temp_file_path}")
+
+            # Combine original metadata with source URL
+            final_metadata = {"source_url": payload.url}
+            if payload.metadata:
+                final_metadata.update(payload.metadata)
+
+            # Read the content back for processing
+            with open(temp_file_path, 'rb') as downloaded_file:
+                file_content = downloaded_file.read()
+            
+            # Process the downloaded file
+            result = ingestor.process_upload(file_content, filename, final_metadata)
+            logger.info(f"Background processing result for {payload.url}: {result}")
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error downloading from URL {payload.url}: {e}")
+        except Exception as e:
+            logger.error(f"Error processing downloaded file from URL {payload.url}: {e}", exc_info=True)
+        finally:
+            # Clean up the temporary file
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                    logger.info(f"Cleaned up temporary file: {temp_file_path}")
+                except Exception as e:
+                    logger.error(f"Error cleaning up temporary file {temp_file_path}: {e}")
+
+    # Add the task to run in the background
+    background_tasks.add_task(process_url_task)
+
+    # Return an initial response indicating acceptance
+    return models.ProcessingResponse(
+        success=True, # Indicates the request was accepted
+        message=f"Processing started for URL: {payload.url}",
+        file_name=os.path.basename(payload.url.split("?")[0]) or "downloaded_file"
+    ) 
