@@ -115,6 +115,9 @@ docker run -p 8000:8000 \
   -e QDRANT_HOST=host.docker.internal \
   -e QDRANT_PORT=6333 \
   hermes-ingestor
+
+# Alternatively
+docker compose up --build
 ```
 
 ## Kubernetes
