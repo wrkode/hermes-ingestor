@@ -126,4 +126,4 @@ Example Kubernetes deployment configurations are available in the `k8s/` directo
 
 ## License
 
-MIT 
+Apache 2.0
